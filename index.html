@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;700&display=swap" rel="stylesheet">
+    <title>WordPress Rest API</title>
+
+    <style>
+        html{
+            box-sizing: border-box;
+            font-family: 'Raleway', sans-serif;
+            font-size: 16px;
+        }
+
+        body{
+            background-color: #e3f2fd;
+        }
+
+        *,
+        *:after,
+        *:before{
+            box-sizing: inherit;
+        }
+
+        a {
+          color: #8d6eff;
+          transition: all .3s ease-out;  
+        }
+
+        a:hover{
+            opacity: .75;
+        }
+
+        img{
+            max-width: 100%;
+            height: auto;
+        }
+
+        h1{
+            text-align: center;
+        }
+
+        hr{
+            border: thin solid #8d6eff;
+            margin: 3rem auto;
+            width: 80%;
+        }
+
+        .side{
+            margin: 1rem auto;
+            /* padding: 1rem; */
+            max-width: 50%;
+            text-align: center;
+        }
+
+        .post{
+            margin: 1rem auto;
+            /* padding: 1rem; */
+            border-radius: .5rem;
+            max-width: 80%;
+            text-align: center;
+            background-color: #e3f2fd;
+        }
+
+        .post-author img{
+            border-radius: 50%;
+        }
+
+        .post-date{
+            margin: 1rem auto;
+            display: block;
+        }
+
+        .post-excerpt,
+        .post-categories,
+        .post-tags,
+        .post-content {
+            text-align: left;
+            line-height: 1.6;
+            word-wrap: break-word;
+        }
+
+        .post-content summary{
+            font-size: 1.5rem;
+            font-weight: bold;
+            max-width: 100%;
+        }
+
+        .post-content > article{
+            padding: 1rem;
+            background-color: #e3f2fd;
+        }
+
+        
+
+        .post-content img{
+            display: block;
+            margin: auto;
+        }
+
+        .loader{
+            display: none;
+            margin: 2rem auto;
+        }
+
+        @media screen and (min-width: 800px) {
+
+            .nav{
+                width: 100%;
+                height: 100%;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                justify-content: space-evenly;
+                justify-items: center;
+                align-items: center;
+                
+            }
+
+            .side{
+                display: flex;
+                align-items: center;
+                justify-content: space-around;
+            }
+
+            .side a{
+                padding: 1rem;
+            }
+
+            hr{
+                padding: 3px;
+                background-color: #8d6eff;
+                width: 100%;
+                border-radius: 8px;
+            }
+
+            
+            
+        }
+
+        @media screen and (min-width: 1020px) {
+            .post{
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+                gap: 20px;
+                width: 100%;
+            }
+
+            .post-content>article{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+                width: 100%;
+                height: 100%;
+            }
+
+            hr{
+                padding: 5px;
+                background-color: #8d6eff;
+                width: 100%;
+                border-radius: 8px;
+            }
+        }   
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <h1>WordPress Rest API</h1>
+        <article id="side" class="side"></article>
+    </div>
+   
+    <section id="posts" class="posts"></section>
+    <img src="assets/loader.svg" alt="Cargando..." class="loader">
+
+    <template id="post-template">
+        <article class="post">
+            <img class="post-image">
+            <aside>
+                <h2 class="post-title"></h2>
+                <figure class="post-author"></figure>
+                <small class="post-date"></small>
+                <a class="post-link" target="_blank">Ver publicación original</a>
+                <p class="post-excerpt"></p>
+                <div class="post-categories"></div>
+                <div class="post-tags"></div>
+                <details class="post-content">
+                    <summary>Ver contenido de la publicación</summary>
+                    <article></article>
+                </details>
+            </aside>
+        </article>
+        <hr>
+    </template>
+
+    <script>
+        const d = document,
+         w = window,
+         $site = d.getElementById("side"),
+         $posts = d.getElementById("posts"),
+         $loader = d.querySelector(".loader"),
+         $template = d.getElementById("post-template").content,
+         $fragment = d.createDocumentFragment(),
+         DOMAIN = "https://malvestida.com",
+         SITE = `${DOMAIN}/wp-json`,
+         API_WP = `${SITE}/wp/v2`,
+         POSTS = `${API_WP}/posts?_embed`, // para evitar realizar 4 peticiones en los endpoints por cada article "_embed"
+         PAIGES = `${API_WP}/pages`,
+         CATEGORIES = `${API_WP}/categories`;
+
+         // VARIABLES PARA EL SCROLL INFINITO
+        let page = 1,
+         perPage = 5;
+
+        function getSiteData() {
+            fetch(SITE)
+             .then(res => res.ok ? res.json() : Promise.reject(res))
+             .then(json =>{
+                 //console.log(json);
+                 $site.innerHTML = `
+                  <h3>Sitio Web</h3>
+                  <h2><a href="${json.url}" target="_blank">${json.name}<a/></h2>
+                  <p>${json.description}</p>
+                  <p>${json.timezone_string}</p>
+                  `;
+             })
+             .catch(err =>{
+                 console.log(err);
+                 let message = err.statusText || "Ocurrio un error";
+                 $site.innerHTML = `<p>Error ${err.status} : ${message}</p>`;
+             });
+        }
+
+        function getPosts() {
+            $loader.style.display = "block";
+
+            fetch(`${POSTS}&page=${page}&per_page=${perPage}`) 
+             .then(res => res.ok ? res.json() : Promise.reject(res))
+             .then(json =>{
+                 //console.log(json);
+
+                 json.forEach(el => {
+                    let categories = "",
+                     tags = "";
+
+                     // como esto lo necesitamos por cada Post lo realizamos dentro del forEach
+                     //por cada el que tenga este array en la var categories vamos concatenando el formato en cadena de texto y lo mismo en tags
+                     
+                    el._embedded["wp:term"][0].forEach(el => categories += `<li>${el.name}</li>`);
+                    el._embedded["wp:term"][1].forEach(el => tags += `<li>${el.name}</li>`);
+
+                    $template.querySelector(".post-image").src = el._embedded["wp:featuredmedia"] ? el._embedded["wp:featuredmedia"][0].source_url : "";
+                    $template.querySelector(".post-image").alt = el.title.rendered;
+                    $template.querySelector(".post-title").innerHTML = el.title.rendered;
+                    $template.querySelector(".post-author").innerHTML = `
+                     <img src = "${el._embedded.author[0].avatar_urls["48"]}" alt="${el._embedded.author[0].name}">
+                     <figcaption>"${el._embedded.author[0].name}"</figcaption>`;
+
+                     $template.querySelector(".post-date").innerHTML = new Date(el.date).toLocaleString();
+                     $template.querySelector(".post-link").href = el.link;
+                     $template.querySelector(".post-excerpt").innerHTML = el.excerpt.rendered.replace("[&hellip;]", "...");
+                     $template.querySelector(".post-categories").innerHTML = `
+                      <p>Categorías:</p>
+                      <ul>${categories}</ul>
+                     `;
+                     $template.querySelector(".post-tags").innerHTML = `
+                      <p>Etiquetas:</p>
+                      <ul>${tags}</ul>
+                     `;
+                     $template.querySelector(".post-content > article").innerHTML = el.content.rendered;
+
+
+                     let $clone = d.importNode($template, true);
+                     $fragment.appendChild($clone);
+                 });
+
+                 $posts.appendChild($fragment);
+                 $loader.style.display = "none";
+             })
+             .catch(err =>{
+                 // console.log(err);
+                 let message = err.statusText || "Ocurrio un error";
+                 $posts.innerHTML = `<p>Error ${err.status} : ${message}</p>`;
+                 $loader.style.display = "none";
+             });
+
+        }
+
+        d.addEventListener("DOMContentLoaded", e =>{
+            getSiteData();
+            getPosts();
+        });
+
+        /*
+        ******************
+        * MANEJANDO EL EVENTO PARA EL SCROLL INFINITO
+        * ****************
+        */
+
+        w.addEventListener("scroll", e =>{
+
+            //destructuración
+            // scrollTop, nos da la distancia en px de cuanto nos hemos alejado del top de la page cuando realizamos scroll
+            // clientHeight, nos da la altura del viewport del dispositivo que estamos usando
+            // scrollHeight, nos da el total de scroll que podemos realizar, teniendo en cuenta que solo 10 post nos da wp.
+            const {scrollTop, clientHeight, scrollHeight } =  d.documentElement;
+
+            // console.log(d.documentElement);
+
+            //console.log(scrollTop, clientHeight, scrollHeight);
+
+            if(scrollTop + clientHeight >= scrollHeight){
+                //console.log("Cargar más Post");
+                page++;
+                getPosts();
+            }
+        });
+
+
+    </script>
+</body>
+</html>
